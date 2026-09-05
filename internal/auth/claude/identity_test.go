@@ -64,6 +64,34 @@ func TestReadDeviceIDPoolReturnsDefensiveCopy(t *testing.T) {
 	}
 }
 
+func TestReadMetadataBoolSupportsJSONBooleansAndStrings(t *testing.T) {
+	metadata := map[string]any{
+		"json_true":   true,
+		"json_false":  false,
+		"string_true": " true ",
+		"string_false": "false",
+		"invalid":     "not-a-bool",
+	}
+
+	for _, test := range []struct {
+		key   string
+		want  bool
+		found bool
+	}{
+		{key: "json_true", want: true, found: true},
+		{key: "json_false", want: false, found: true},
+		{key: "string_true", want: true, found: true},
+		{key: "string_false", want: false, found: true},
+		{key: "invalid", want: false, found: false},
+		{key: "missing", want: false, found: false},
+	} {
+		got, found := ReadMetadataBool(&metadata, test.key)
+		if got != test.want || found != test.found {
+			t.Fatalf("ReadMetadataBool(%q) = (%v, %v), want (%v, %v)", test.key, got, found, test.want, test.found)
+		}
+	}
+}
+
 func TestEnsureDeviceIDPoolRepairsAndStabilizesCredentialMetadata(t *testing.T) {
 	const first = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	metadata := map[string]any{

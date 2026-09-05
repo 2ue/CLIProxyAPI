@@ -292,6 +292,18 @@ func (h *Handler) listAuthFilesFromDisk(c *gin.Context) {
 						}
 					}
 				}
+				if cv := gjson.GetBytes(data, "cloak_cache_user_id"); cv.Exists() {
+					switch cv.Type {
+					case gjson.True:
+						fileData["cloak_cache_user_id"] = true
+					case gjson.False:
+						fileData["cloak_cache_user_id"] = false
+					case gjson.String:
+						if parsed, errParse := strconv.ParseBool(strings.TrimSpace(cv.String())); errParse == nil {
+							fileData["cloak_cache_user_id"] = parsed
+						}
+					}
+				}
 				if requestRetry, okRetry := authFileRequestRetryFromJSON(data); okRetry {
 					fileData["request_retry"] = requestRetry
 				}
@@ -431,6 +443,9 @@ func (h *Handler) buildAuthFileEntryLocked(auth *coreauth.Auth) gin.H {
 	if websockets, ok := authWebsocketsValue(auth); ok {
 		entry["websockets"] = websockets
 	}
+	if cloakCacheUserID, ok := authCloakCacheUserIDValue(auth); ok {
+		entry["cloak_cache_user_id"] = cloakCacheUserID
+	}
 	if requestRetry, ok := auth.RequestRetryOverride(); ok {
 		entry["request_retry"] = requestRetry
 	}
@@ -533,6 +548,23 @@ func authWebsocketsValue(auth *coreauth.Auth) (bool, bool) {
 		}
 	}
 	return false, false
+}
+
+func authCloakCacheUserIDValue(auth *coreauth.Auth) (bool, bool) {
+	if auth == nil {
+		return false, false
+	}
+	if auth.Attributes != nil {
+		if raw := strings.TrimSpace(auth.Attributes["cloak_cache_user_id"]); raw != "" {
+			if parsed, errParse := strconv.ParseBool(raw); errParse == nil {
+				return parsed, true
+			}
+		}
+	}
+	if auth.Metadata == nil {
+		return false, false
+	}
+	return authFileBoolValue(auth.Metadata["cloak_cache_user_id"])
 }
 
 func authProjectID(auth *coreauth.Auth) string {

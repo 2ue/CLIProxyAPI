@@ -123,12 +123,103 @@ func TestListAuthFilesFromDisk_IncludesWebsockets(t *testing.T) {
 	}
 }
 
+func TestListAuthFiles_IncludesExplicitCloakCacheUserIDFromManager(t *testing.T) {
+	t.Setenv("MANAGEMENT_PASSWORD", "")
+
+	authDir := t.TempDir()
+	manager := coreauth.NewManager(nil, nil, nil)
+	for _, test := range []struct {
+		name  string
+		value bool
+	}{
+		{name: "claude-true.json", value: true},
+		{name: "claude-false.json", value: false},
+	} {
+		filePath := filepath.Join(authDir, test.name)
+		if errWrite := os.WriteFile(filePath, []byte(`{"type":"claude"}`), 0o600); errWrite != nil {
+			t.Fatalf("failed to write auth file: %v", errWrite)
+		}
+		record := &coreauth.Auth{
+			ID:       test.name,
+			FileName: test.name,
+			Provider: "claude",
+			Status:   coreauth.StatusActive,
+			Attributes: map[string]string{
+				"path": filePath,
+			},
+			Metadata: map[string]any{
+				"cloak_cache_user_id": test.value,
+			},
+		}
+		if _, errRegister := manager.Register(context.Background(), record); errRegister != nil {
+			t.Fatalf("failed to register auth record: %v", errRegister)
+		}
+	}
+
+	h := NewHandlerWithoutConfigFilePath(&config.Config{AuthDir: authDir}, manager)
+	h.tokenStore = &memoryAuthStore{}
+	for _, test := range []struct {
+		name  string
+		value bool
+	}{
+		{name: "claude-true.json", value: true},
+		{name: "claude-false.json", value: false},
+	} {
+		entry := firstAuthFileEntryNamed(t, h, test.name)
+		if got := entry["cloak_cache_user_id"]; got != test.value {
+			t.Fatalf("cloak_cache_user_id = %#v, want %v", got, test.value)
+		}
+	}
+}
+
+func TestListAuthFilesFromDisk_IncludesExplicitCloakCacheUserIDAndOmitsMissing(t *testing.T) {
+	t.Setenv("MANAGEMENT_PASSWORD", "")
+
+	authDir := t.TempDir()
+	tests := []struct {
+		name string
+		json string
+		want any
+	}{
+		{name: "true.json", json: `{"type":"claude","cloak_cache_user_id":true}`, want: true},
+		{name: "false.json", json: `{"type":"claude","cloak_cache_user_id":false}`, want: false},
+		{name: "missing.json", json: `{"type":"claude"}`, want: nil},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if errWrite := os.WriteFile(filepath.Join(authDir, test.name), []byte(test.json), 0o600); errWrite != nil {
+				t.Fatalf("failed to write auth file: %v", errWrite)
+			}
+			h := NewHandlerWithoutConfigFilePath(&config.Config{AuthDir: authDir}, nil)
+			entry := firstAuthFileEntryNamed(t, h, test.name)
+			got, exists := entry["cloak_cache_user_id"]
+			if test.want == nil {
+				if exists {
+					t.Fatalf("expected missing cloak_cache_user_id to be omitted, got %#v", got)
+				}
+				return
+			}
+			if !exists || got != test.want {
+				t.Fatalf("cloak_cache_user_id = %#v, want %#v", got, test.want)
+			}
+		})
+	}
+}
+
 func firstAuthFileEntry(t *testing.T, h *Handler) map[string]any {
+	return firstAuthFileEntryNamed(t, h, "")
+}
+
+func firstAuthFileEntryNamed(t *testing.T, h *Handler, name string) map[string]any {
 	t.Helper()
 
 	rec := httptest.NewRecorder()
 	ginCtx, _ := gin.CreateTestContext(rec)
-	ginCtx.Request = httptest.NewRequest(http.MethodGet, "/v0/management/auth-files", nil)
+	path := "/v0/management/auth-files"
+	if name != "" {
+		path += "?name=" + name
+	}
+	ginCtx.Request = httptest.NewRequest(http.MethodGet, path, nil)
 
 	h.ListAuthFiles(ginCtx)
 

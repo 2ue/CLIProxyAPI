@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -85,7 +86,20 @@ func getCloakConfigFromAuth(auth *cliproxyauth.Auth) (cloakMode string, strictMo
 		}
 	}
 
-	cacheUserID = strings.EqualFold(lookupCloakAttr("cloak_cache_user_id"), "true")
+	cacheUserIDConfigured := false
+	if auth.Attributes != nil {
+		if raw, exists := auth.Attributes["cloak_cache_user_id"]; exists && strings.TrimSpace(raw) != "" {
+			if parsed, errParse := strconv.ParseBool(strings.TrimSpace(raw)); errParse == nil {
+				cacheUserID = parsed
+				cacheUserIDConfigured = true
+			}
+		}
+	}
+	if !cacheUserIDConfigured {
+		if metadataValue, ok := claudeauth.ReadMetadataBool(&auth.Metadata, "cloak_cache_user_id"); ok {
+			cacheUserID = metadataValue
+		}
+	}
 
 	return cloakMode, strictMode, sensitiveWords, cacheUserID
 }

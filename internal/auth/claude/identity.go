@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
+	"strconv"
 	"strings"
 	"sync"
 )
@@ -187,6 +188,31 @@ func ReadMetadataString(metadata *map[string]any, key string) string {
 	}
 	value, _ := (*metadata)[key].(string)
 	return value
+}
+
+// ReadMetadataBool reads a boolean-valued metadata entry under the metadata
+// lock. JSON booleans and string values written by the management API are both
+// accepted so credential files remain compatible across writers.
+func ReadMetadataBool(metadata *map[string]any, key string) (bool, bool) {
+	if metadata == nil {
+		return false, false
+	}
+	claudeDevicePoolMu.Lock()
+	defer claudeDevicePoolMu.Unlock()
+
+	if *metadata == nil {
+		return false, false
+	}
+	switch value := (*metadata)[key].(type) {
+	case bool:
+		return value, true
+	case string:
+		parsed, err := strconv.ParseBool(strings.TrimSpace(value))
+		if err == nil {
+			return parsed, true
+		}
+	}
+	return false, false
 }
 
 // StoreMetadataString writes a string-valued metadata entry under the metadata

@@ -128,3 +128,26 @@ func TestClaudeExecutorSharedCredentialMetadataMixedAccess(t *testing.T) {
 	}
 	wg.Wait()
 }
+
+func TestGetCloakConfigFromAuthReadsBooleanCacheUserIDMetadata(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		value any
+		want  bool
+	}{
+		{name: "json true", value: true, want: true},
+		{name: "json false", value: false, want: false},
+		{name: "string true", value: "true", want: true},
+		{name: "string false", value: "false", want: false},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			auth := &cliproxyauth.Auth{Metadata: map[string]any{
+				"cloak_cache_user_id": test.value,
+			}}
+			_, _, _, got := getCloakConfigFromAuth(auth)
+			if got != test.want {
+				t.Fatalf("cacheUserID = %v, want %v", got, test.want)
+			}
+		})
+	}
+}
